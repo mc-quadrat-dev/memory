@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0D0D0D">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Memory">
+  <title>Memory · KBRail Edition</title>
+  <style>
+    :root {
+      --bg: #0D0D0D;
+      --surface: #1A1A1A;
+      --surface2: #252525;
+      --surface3: #2E2E2E;
+      --magenta: #E20074;
+      --magenta-l: #FF4FA3;
+      --text: #FFFFFF;
+      --text-dim: #888;
+      --sat: env(safe-area-inset-top, 0px);
+      --sar: env(safe-area-inset-right, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+      --sal: env(safe-area-inset-left, 0px);
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box; margin: 0; padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    html { height: 100%; }
+    body {
+      min-height: 100%; background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      overscroll-behavior: none;
+      touch-action: manipulation;
+      -webkit-user-select: none; user-select: none;
+    }
+    button { touch-action: manipulation; }
+    input { -webkit-user-select: text; user-select: text; }
+    img { -webkit-user-drag: none; -webkit-touch-callout: none; user-select: none; }
+
+    /* ── Screens ── */
+    .screen { display: none; }
+    .screen.active { display: flex; }
+
+    /* ── Start Screen ── */
+    #screen-start {
+      min-height: 100vh; min-height: 100dvh;
+      flex-direction: column; align-items: center;
+      justify-content: center; gap: 24px;
+      padding: calc(20px + var(--sat)) calc(20px + var(--sar)) calc(20px + var(--sab)) calc(20px + var(--sal));
+    }
+    .start-logo { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .start-title {
+      font-size: clamp(2.2rem, 8vw, 4rem); font-weight: 900; letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #fff 0%, var(--magenta-l) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .start-sub { font-size: 0.85rem; color: var(--text-dim); letter-spacing: 0.04em; text-align: center; }
+
+    .setup-card {
+      background: var(--surface); border: 1px solid #2a2a2a;
+      border-radius: 16px; padding: 24px; width: 100%; max-width: 540px;
+    }
+    .setup-label {
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--text-dim); margin-bottom: 12px;
+    }
+    .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .pill {
+      padding: 10px 18px; border: 1.5px solid var(--surface3);
+      border-radius: 100px; background: transparent; color: var(--text);
+      font-family: inherit; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer; transition: all 0.15s;
+      flex: 1 1 auto; min-height: 44px;
+    }
+    .pill.active { background: var(--magenta); border-color: var(--magenta); color: #fff; }
+
+    .player-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .player-row { display: flex; align-items: center; gap: 10px; }
+    .pdot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .pname-input {
+      flex: 1; min-width: 0; background: var(--surface2); border: 1px solid var(--surface3);
+      border-radius: 8px; padding: 10px 12px; color: var(--text);
+      font-family: inherit; font-size: 16px; /* verhindert Auto-Zoom auf iOS */
+      outline: none; transition: border-color 0.15s;
+    }
+    .pname-input:focus { border-color: var(--magenta); }
+
+    .divider { height: 1px; background: #222; margin: 20px 0; }
+
+    .btn-start {
+      width: 100%; padding: 15px; background: var(--magenta); border: none;
+      border-radius: 10px; color: #fff; font-family: inherit;
+      font-size: 1.05rem; font-weight: 700; cursor: pointer;
+      transition: background 0.15s, transform 0.1s; margin-top: 20px;
+      letter-spacing: 0.03em; min-height: 50px;
+    }
+    .btn-start:active { transform: scale(0.98); }
+
+    /* ── Game Screen ── */
+    #screen-game {
+      flex-direction: column; overflow: hidden;
+      height: 100vh; height: 100dvh;
+      touch-action: pan-y; /* blockiert Pinch-Zoom im Spiel, erlaubt Board-Scrollen */
+    }
+
+    .game-header {
+      background: var(--surface); border-bottom: 1px solid #222;
+      padding: calc(8px + var(--sat)) calc(12px + var(--sar)) 8px calc(12px + var(--sal));
+      display: flex; align-items: center; gap: 10px;
+      flex-shrink: 0; z-index: 10;
+    }
+    .game-logo {
+      font-weight: 900; font-size: 0.95rem; letter-spacing: 0.1em;
+      color: var(--magenta-l); flex-shrink: 0;
+    }
+    .score-chips {
+      display: flex; gap: 7px; flex: 1; min-width: 0;
+      overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    .score-chips::-webkit-scrollbar { display: none; }
+    .chip {
+      display: block; padding: 6px 11px;
+      border-radius: 100px; font-size: 0.78rem; font-weight: 700;
+      border: 2px solid transparent; transition: all 0.2s; white-space: nowrap;
+      flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; max-width: 160px;
+    }
+    .chip.active { border-color: currentColor; }
+    .header-btns { display: flex; gap: 6px; flex-shrink: 0; }
+    .btn-hdr {
+      background: transparent; border: 1px solid var(--surface3); color: var(--text-dim);
+      border-radius: 8px; padding: 7px 11px; cursor: pointer;
+      font-family: inherit; font-size: 0.8rem; min-height: 36px;
+    }
+
+    .turn-banner {
+      text-align: center; font-size: 0.82rem; font-weight: 700;
+      padding: 6px calc(12px + var(--sar)) 6px calc(12px + var(--sal));
+      transition: background 0.3s, color 0.3s; letter-spacing: 0.02em;
+      flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .board-wrap {
+      flex: 1; min-height: 0; overflow: hidden;
+      padding: 10px calc(10px + var(--sar)) calc(10px + var(--sab)) calc(10px + var(--sal));
+      display: flex; justify-content: center; align-items: center;
+    }
+    /* Bei großen Decks auf kleinen Screens: vertikal scrollen statt Mini-Karten */
+    .board-wrap.scrolling {
+      overflow-y: auto; align-items: flex-start;
+      -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    }
+    .board { display: grid; gap: 6px; flex-shrink: 0; }
+
+    /* ── Card ── */
+    .card { cursor: pointer; perspective: 900px; }
+    .card-inner {
+      position: relative; width: 100%; height: 100%;
+      transform-style: preserve-3d; transition: transform 0.38s ease;
+      border-radius: 8px;
+    }
+    .card.flipped .card-inner,
+    .card.matched .card-inner { transform: rotateY(180deg); }
+
+    .card-face {
+      position: absolute; inset: 0; border-radius: 8px;
+      overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+    }
+    .card-back {
+      background-color: var(--surface2);
+      border: 1.5px solid var(--surface3);
+      background-image: /*CARD_BACK_URL*/url("_memory/rueckeseite.svg");
+      background-size: 88% 88%;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+    .card-front { transform: rotateY(180deg); background: #111; }
+    .card-front img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .card.matched { cursor: default; }
+    .card.matched .card-front::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: rgba(0, 0, 0, 0.82);
+      border-radius: 8px;
+      box-shadow: inset 0 0 0 2px var(--match-color, transparent);
+    }
+    /* Touch-Feedback statt Hover */
+    .card:not(.matched):not(.flipped):active .card-inner {
+      filter: brightness(1.35);
+    }
+    @media (hover: hover) {
+      .pill:hover { border-color: var(--magenta-l); color: var(--magenta-l); }
+      .pill.active:hover { background: var(--magenta); border-color: var(--magenta); color: #fff; }
+      .btn-start:hover, .btn-again:hover { background: var(--magenta-l); }
+      .btn-hdr:hover { border-color: var(--magenta-l); color: var(--magenta-l); }
+      .card:not(.matched):not(.flipped):hover .card-inner {
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.2);
+      }
+    }
+
+    /* Schmale Screens: Chips umbrechen statt unsichtbar scrollen, Logo weicht */
+    @media (max-width: 480px) {
+      .score-chips { flex-wrap: wrap; }
+      .chip { max-width: 128px; }
+    }
+    @media (max-width: 430px) {
+      .game-logo { display: none; }
+    }
+
+    /* Kompakter Header auf niedrigen Landscape-Screens (Smartphone quer) */
+    @media (max-height: 480px) {
+      .game-header { padding-top: calc(5px + var(--sat)); padding-bottom: 5px; }
+      .turn-banner { padding: 3px calc(12px + var(--sar)) 3px calc(12px + var(--sal)); font-size: 0.74rem; }
+      .board-wrap { padding: 6px calc(8px + var(--sar)) calc(6px + var(--sab)) calc(8px + var(--sal)); }
+      #screen-start { justify-content: flex-start; gap: 16px; }
+      .start-title { font-size: 1.8rem; }
+      .setup-card { padding: 18px; }
+    }
+
+    /* ── Win Screen ── */
+    #screen-win {
+      flex-direction: column; align-items: center; justify-content: center;
+      min-height: 100vh; min-height: 100dvh;
+      gap: 20px; text-align: center; position: relative;
+      padding: calc(20px + var(--sat)) calc(20px + var(--sar)) calc(20px + var(--sab)) calc(20px + var(--sal));
+    }
+    #confetti-canvas { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
+    .win-emoji { font-size: clamp(2.6rem, 10vw, 4rem); }
+    .win-title { font-size: clamp(1.6rem, 6vw, 3rem); font-weight: 900; line-height: 1.2; }
+    .win-sub { color: var(--text-dim); font-size: 0.9rem; }
+
+    .win-table {
+      border-collapse: collapse; width: 100%; max-width: 380px;
+      background: var(--surface); border-radius: 12px; overflow: hidden;
+      border: 1px solid #222;
+    }
+    .win-table th {
+      padding: 10px 16px; text-align: left; font-size: 0.7rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim);
+      border-bottom: 1px solid #222;
+    }
+    .win-table td { padding: 10px 16px; border-bottom: 1px solid #1a1a1a; }
+    .win-table tr:last-child td { border-bottom: none; }
+    .win-row-gold td:first-child { font-size: 1.1rem; }
+
+    .btn-again {
+      padding: 14px 36px; background: var(--magenta); border: none;
+      border-radius: 10px; color: #fff; font-family: inherit; font-size: 1rem;
+      font-weight: 700; cursor: pointer; transition: background 0.15s;
+      min-height: 50px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Start Screen ── -->
+<div id="screen-start" class="screen">
+  <div class="start-logo">
+    <div class="start-title">Memory</div>
+    <div class="start-sub">KBRail Edition &nbsp;·&nbsp; Findet die passenden Paare</div>
+  </div>
+
+  <div class="setup-card">
+    <div class="setup-label">Anzahl Spieler</div>
+    <div class="pill-row" id="player-pills">
+      <button class="pill active" data-v="1">1</button>
+      <button class="pill" data-v="2">2</button>
+      <button class="pill" data-v="3">3</button>
+      <button class="pill" data-v="4">4</button>
+    </div>
+    <div class="player-rows" id="player-rows"></div>
+
+    <div class="divider"></div>
+
+    <div class="setup-label">Kartenpaare</div>
+    <div class="pill-row" id="pair-pills">
+      <button class="pill active" data-v="15">15</button>
+      <button class="pill" data-v="30">30</button>
+      <button class="pill" data-v="40">40</button>
+      <button class="pill" data-v="50">50</button>
+    </div>
+
+    <button class="btn-start" id="btn-start">Spiel starten ▶</button>
+  </div>
+</div>
+
+<!-- ── Game Screen ── -->
+<div id="screen-game" class="screen">
+  <div class="game-header">
+    <div class="game-logo">MEMORY</div>
+    <div class="score-chips" id="score-chips"></div>
+    <div class="header-btns">
+      <button class="btn-hdr" id="btn-fullscreen" title="Vollbild" hidden>⛶</button>
+      <button class="btn-hdr" id="btn-reset">↩ Neu</button>
+    </div>
+  </div>
+  <div class="turn-banner" id="turn-banner"></div>
+  <div class="board-wrap" id="board-wrap">
+    <div class="board" id="board"></div>
+  </div>
+</div>
+
+<!-- ── Win Screen ── -->
+<div id="screen-win" class="screen">
+  <canvas id="confetti-canvas"></canvas>
+  <div class="win-emoji" id="win-emoji"></div>
+  <div class="win-title" id="win-title"></div>
+  <div class="win-sub" id="win-sub"></div>
+  <table class="win-table" id="win-table"></table>
+  <button class="btn-again" id="btn-again">Nochmal spielen</button>
+</div>
+
+<script>
+/* ── Config ── */
+const COLORS = ['#E20074','#00B4D8','#7CB518','#F77F00'];
+const COLORS_BG = ['rgba(226,0,116,0.14)','rgba(0,180,216,0.14)','rgba(124,181,24,0.14)','rgba(247,127,0,0.14)'];
+const GAP = 6;          // muss zum CSS-Gap des Boards passen
+const MIN_CARD = 48;    // minimale Touch-Größe; darunter wird gescrollt
+const MAX_CARD = 170;
+
+const IMAGE_BASE = '_memory/';
+// >>> IMAGES
+const IMAGES = [
+  'Mittel (mc_qudrat_A_fox_in_a_rocky_landscape_with_wireless_headphones_49bf1f22-fd10-4124-9090-ea67cb15efd2).jpeg',
+  'Mittel (mc_qudrat_a_Goldfisch_inside_a_pumpkin_at_daylight_with_a_for_1f536b61-0e6d-488e-bb74-c6c2be54b448).jpeg',
+  'Mittel (mc_qudrat_A_wombat_with_a_hat_on_its_head_sitting_on_a_old_te_f4d67fc7-4950-4a03-a2cd-d9c0b1585e7e).jpeg',
+  'Mittel (mc_qudrat_a_Squirrel_sitting_on_a_retro_magenta_telephone_in__cbd7cae3-4681-445e-b0c0-97711ccc62cd).jpeg',
+  'Mittel (mc_qudrat_a_peacock_sitting_on_a_rock_with_a_beautiful_green__2d905125-df38-4c1d-8130-f49742bb8bbc).jpeg',
+  'Mittel (mc_qudrat_a_Cheetah_with_diving_goggles_in_the_snow_with_a_mo_d8b6b5b5-370c-4890-8eae-1dc03eb16bf0).jpeg',
+  'Mittel (mc_qudrat_A_Parrot_with_futuristic_sunglasses_sits_on_a_branc_3d261122-11cc-4b0c-8691-599de3410e7c).jpeg',
+  'Mittel (mc_qudrat_A_snake_with_a_cap_on_its_head_in_the_forest_in_the_849e73ce-65b7-4709-8189-447b7da79d00).jpeg',
+  'Mittel (mc_qudrat_A_tiger_wearing_a_apple_vision_pro_with_a_bowl_of_c_98fe51da-8512-42ba-bea8-cca04049b143).jpeg',
+  'Mittel (mc_qudrat_A_kangaroo_with_magenta_boxing_gloves_and_a_lollipo_238a644f-7571-43f4-bf11-1358ae825125).jpeg',
+  'Mittel (mc_qudrat_An_octopus_on_a_meadow_with_a_microphone_in_its_ten_a4bf7a98-f023-4eec-90ad-b30c008b8797).jpeg',
+  'Mittel (mc_qudrat_A_frog_with_a_straw_hat_on_its_head_against_Swampla_8bfd3b61-cd77-4328-a42d-4083a45474c0).jpeg',
+  'Mittel (mc_qudrat_a_ostrich_jumping_ot_of_the_ocean_with_diving_goggl_a0b4da12-e47e-4d8c-b395-b5b8e2042c03).jpeg',
+  'Mittel (mc_qudrat_An_cute_armadillo_with_in_a_field_of_sunflowers_wit_88a1e799-3b38-4745-b3dd-528a24a82e0a).jpeg',
+  'Mittel (mc_qudrat_a_glowing_turtle_with_a_neon_colored_hat_in_the_sno_5dfb701a-04bd-40c5-98fe-8ff44a945064).jpeg',
+  'Mittel (mc_qudrat_A_komodo_dragon_in_a_swamp_with_yellow_rubber_bath__cf99c46e-0a5b-444e-909d-994206f50cfc).jpeg',
+  'Mittel (mc_qudrat_a_deer_with_an_iPod_nano_around_its_neck_listening__6441b8bf-8f59-42b7-9262-53337b653141).jpeg',
+  'Mittel (mc_qudrat_a_racoon_on_a_skateboard_in_a_corn_field_in_the_sty_1addd62c-41b8-423f-b401-c2065ca7fe42).jpeg',
+  'Mittel (mc_qudrat_Ein_Rabe_mit_einer_goldenen_kette_im_Schnabel_der_u_8fab319d-f672-4c87-8ded-081425beaaaa).jpeg',
+  'Mittel (mc_qudrat_A_rooster_on_a_water_melon_with_a_gold_chain_around_50252900-87d9-489c-ad43-a903516cc168).jpeg',
+  'Mittel (mc_qudrat_A_snail_on_a_cactus_with_small_caps_on_its_eyes__in_31bfcd72-ccc1-435c-80ae-806975877228).jpeg',
+  'Mittel (mc_qudrat_a_badger_on_a_field_with_a_umbrella_in_the_style_of_566fcc98-55bf-4f39-8e13-d16a76081187).jpeg',
+  'Mittel (mc_qudrat_a_brown_bear_with_a_crown_stomps_out_of_the_forest__5405b2ef-48c0-4354-beec-8b674f22de5a).jpeg',
+  'Mittel (mc_qudrat_a_magenta_Pelican_that_is_listening_to_music_on_an__bf0d3165-4aa7-4d0f-9987-dba0b2e08902).jpeg',
+  'Mittel (mc_qudrat_A_rhino_on_a_mango_plantation_with_earpods_in_its_e_6d8c5b8f-1153-4e36-8f6e-a2d14f0760b7).jpeg',
+  'Mittel (mc_qudrat_A_seahorse_under_water_with_magenta_Toadstools_floa_4a7ad224-d1a8-4f9a-ac10-84b9395164d3).jpeg',
+  'Mittel (mc_qudrat_a_butterfly_sitting_on_a_magenta_rose_with_lightini_e8362147-8e69-41b7-a49b-98b72dd568e5).jpeg',
+  'Mittel (mc_qudrat_A_koala_hanging_in_a_chestnut_tree_with_a_magenta_c_f290e335-fc58-44d9-8bd8-e7e6e5cdd22e).jpeg',
+  'Mittel (mc_qudrat_A_panther_in_a_strawberry_field_in_the_sunlight_in__dc45faa0-d509-4500-89c3-4e4c527d5800).jpeg',
+  'Mittel (mc_qudrat_A_crocodile_with_sunglasses_holding_an_old_cell_pho_7eea4302-3044-46a9-b8c6-707514591853).jpeg',
+  'Mittel (mc_qudrat_An_Owl_with_futuristic_sunglasses_sits_on_a_branch__916eae5e-7e50-4bf8-95b7-e38da5f6e9de).jpeg',
+  'Mittel (mc_qudrat_A_lizard_with_a_old_ipod_against_a_desert_backgroun_c3af3307-5a39-4617-9921-25b5f3144829).jpeg',
+  'Mittel (mc_qudrat_An_cute_axolotl_under_water_with_a_top_hat_on_its_h_bfd97712-4182-4055-aeb0-84a338b5e205).jpeg',
+  'Mittel (mc_qudrat_a_shiba_inu_with_diving_goggles_in_the_desert_in_th_ad821f1e-0c83-48a9-9170-19983ef06362).jpeg',
+  'Mittel (mc_qudrat_A_panda_on_a_green_meadow_with_a_drinking_packet_wi_228e0623-5fac-4b58-8ada-5b20ff520fd3).jpeg',
+  'Mittel (mc_qudrat_A_ladybird_on_a_blade_of_grass_with_magenta_colored_818b9b0e-23a0-4bd9-9d51-0c18430b345f).jpeg',
+  'Mittel (mc_qudrat_A_otter_listening_to_music_in_a_corn_field_in_the_s_cc1daa20-049d-43aa-ac76-15aaee231279).jpeg',
+  'Mittel (mc_qudrat_A_Guinea_Pig_with_magenta_fur_and_a_monocle_on_a_ro_31227068-0c95-4e7f-969a-ee5863ed4b67).jpeg',
+  'Mittel (mc_qudrat_a_cow_in_the_evening_with_a_magenta_blanket_on_its__1beabb09-615e-4b36-9c9c-25d22c95f251).jpeg',
+  'Mittel (mc_qudrat_A_bumblebee_with_diving_goggles_sitting_on_a_magent_05d0d6f2-6dd2-4c2e-b576-2c0227b2ccd8).jpeg',
+  'Mittel (mc_qudrat_A_hedgehog_with_magenta-colored_spines_on_a_tree_tr_56ac733d-4c5b-40aa-9800-3ce36ceabab3).jpeg',
+  'Mittel (mc_qudrat_a_rabbit_with_a_smartphone_in_his_hand_doing_a_self_2e2752a1-004d-495d-8748-ab2d28ec802e).jpeg',
+  'Mittel (mc_qudrat_a_lama_listening_to_a_Sony_Walkman_TPS-L2_at_the_be_9db5f25b-62be-4b77-a8a0-7fe15ec26e90).jpeg',
+  'Mittel (mc_qudrat_A_tarsier_with_headphones_hanging_down_from_a_branc_1786f286-f940-4f61-8732-23660a9570f2).jpeg',
+  'Mittel (mc_qudrat_A_penguin_on_a_banana_boat_jumping_out_of_the_ocean_a354e536-1ea5-4a63-ac59-f1e3af268b24).jpeg',
+  'Mittel (mc_qudrat_a_seal_sittting_in_a_german_telephone_box_from_Tele_92ed49b9-6d43-4c2f-b69b-39236749214d).jpeg',
+  'Mittel (mc_qudrat_a_giraffe_with_a_golden_neckless_and_a_pinapple_in__1d5d0664-f714-4309-bb42-200f7e7154f5).jpeg',
+  'Mittel (mc_qudrat_A_meerkat_standing_in_a_Lavender_field_with_a_binoc_974f0d66-5324-493f-a204-fbc47a48c712).jpeg',
+  'Mittel (mc_qudrat_a_magenta_Jellyfish_levitating_in_the_air_with_bubb_ab151eeb-dc4e-44a0-94e1-d612219aed69).jpeg',
+  'Mittel (mc_qudrat_a_duck_on_retro_roller_skates_in_the_desert_in_the__b4a3d192-91e2-4a41-a190-03af479a8f89).jpeg',
+];
+// <<< IMAGES
+
+/* ── State ── */
+let numPlayers = 1, numPairs = 15;
+let names = [], scores = [], currentPlayer = 0;
+let flipped = [], matched = 0, canFlip = true, moves = 0;
+let startTime = 0;
+let gameGen = 0; // entwertet ausstehende Timer alter Spiele
+
+/* ── Helpers ── */
+const $ = id => document.getElementById(id);
+const imgSrc = f => f.startsWith('data:') ? f : IMAGE_BASE + encodeURIComponent(f);
+function shuffle(a) {
+  const b = [...a];
+  for (let i = b.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [b[i], b[j]] = [b[j], b[i]];
+  }
+  return b;
+}
+function fmtTime(ms) {
+  const s = Math.floor(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
+}
+
+/* ── Pill Groups ── */
+function makePills(groupId, onSelect) {
+  document.querySelectorAll(`#${groupId} .pill`).forEach(p => {
+    p.addEventListener('click', () => {
+      document.querySelectorAll(`#${groupId} .pill`).forEach(x => x.classList.remove('active'));
+      p.classList.add('active');
+      onSelect(p.dataset.v);
+    });
+  });
+}
+
+makePills('player-pills', v => { numPlayers = +v; renderNameInputs(); });
+makePills('pair-pills', v => { numPairs = +v; });
+
+/* ── Player Name Inputs ── */
+function renderNameInputs() {
+  const container = $('player-rows');
+  container.innerHTML = '';
+  for (let i = 0; i < numPlayers; i++) {
+    const row = document.createElement('div');
+    row.className = 'player-row';
+    const dot = document.createElement('div');
+    dot.className = 'pdot';
+    dot.style.background = COLORS[i];
+    const inp = document.createElement('input');
+    inp.className = 'pname-input';
+    inp.placeholder = `Spieler ${i + 1}`;
+    inp.autocomplete = 'off';
+    inp.value = names[i] || '';
+    inp.addEventListener('input', e => names[i] = e.target.value);
+    row.appendChild(dot); row.appendChild(inp);
+    container.appendChild(row);
+  }
+}
+
+/* ── Screen Switch ── */
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+/* ── Start Game ── */
+$('btn-start').addEventListener('click', () => {
+  gameGen++;
+  const inputs = $('player-rows').querySelectorAll('input');
+  names = Array.from(inputs).map((inp, i) => inp.value.trim() || `Spieler ${i + 1}`);
+  scores = Array(numPlayers).fill(0);
+  currentPlayer = 0; flipped = []; matched = 0; canFlip = true; moves = 0;
+  startTime = Date.now();
+  buildBoard();
+  renderChips();
+  updateBanner();
+  show('screen-game');
+  applyLayout();
+  requestWakeLock();
+});
+
+$('btn-reset').addEventListener('click', () => { gameGen++; show('screen-start'); releaseWakeLock(); });
+$('btn-again').addEventListener('click', () => { gameGen++; show('screen-start'); releaseWakeLock(); });
+
+/* ── iOS: :active-Feedback aktivieren, Pinch-Zoom im Spiel unterbinden ── */
+document.addEventListener('touchstart', () => {}, { passive: true });
+document.addEventListener('gesturestart', e => {
+  if ($('screen-game').classList.contains('active')) e.preventDefault();
+});
+
+/* ── Vollbild (Android/Desktop; auf iPhone nicht verfügbar) ── */
+const fsBtn = $('btn-fullscreen');
+if (document.documentElement.requestFullscreen) {
+  fsBtn.hidden = false;
+  fsBtn.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {});
+  });
+}
+
+/* ── Bildschirm anlassen, solange gespielt wird ── */
+let wakeLock = null;
+async function requestWakeLock() {
+  try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) {}
+}
+function releaseWakeLock() {
+  wakeLock?.release().catch(() => {}); wakeLock = null;
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && $('screen-game').classList.contains('active')) requestWakeLock();
+});
+
+/* ── Layout: quadratische Karten, Raster passt sich an Ausrichtung an ── */
+let totalCards = 30;
+function applyLayout() {
+  const board = $('board');
+  const wrap = $('board-wrap');
+  if (!$('screen-game').classList.contains('active')) return;
+
+  const cs = getComputedStyle(wrap);
+  const availW = wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const availH = wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+
+  // Beste Spaltenzahl suchen: maximiert die Kartengröße im verfügbaren Raum
+  let best = { size: 0, cols: 2 };
+  for (let cols = 2; cols <= totalCards; cols++) {
+    const rows = Math.ceil(totalCards / cols);
+    const byW = (availW - (cols - 1) * GAP) / cols;
+    const byH = (availH - (rows - 1) * GAP) / rows;
+    const size = Math.min(byW, byH);
+    if (size > best.size) best = { size, cols };
+  }
+
+  let { size, cols } = best;
+  let scrolling = false;
+  if (size < MIN_CARD) {
+    // Passt nicht ohne Mini-Karten → Breite ausnutzen, vertikal scrollen
+    cols = Math.min(totalCards, Math.max(2, Math.floor((availW + GAP) / (MIN_CARD + GAP))));
+    size = (availW - (cols - 1) * GAP) / cols;
+    scrolling = true;
+  }
+  size = Math.floor(Math.min(size, MAX_CARD));
+
+  wrap.classList.toggle('scrolling', scrolling);
+  board.style.gridTemplateColumns = `repeat(${cols}, ${size}px)`;
+  board.style.gridAutoRows = `${size}px`;
+}
+
+let layoutTimer = 0;
+function queueLayout() {
+  clearTimeout(layoutTimer);
+  layoutTimer = setTimeout(applyLayout, 50);
+}
+window.addEventListener('resize', queueLayout);
+window.addEventListener('orientationchange', queueLayout);
+window.visualViewport?.addEventListener('resize', queueLayout);
+// Fängt jede Größenänderung des Containers ab (Rotation, ein-/ausblendende Browser-UI)
+new ResizeObserver(queueLayout).observe($('board-wrap'));
+
+/* ── Build Board ── */
+function buildBoard() {
+  const board = $('board');
+  board.innerHTML = '';
+  totalCards = numPairs * 2;
+
+  const chosen = shuffle(IMAGES).slice(0, numPairs);
+  // Ausgewählte Motive vorladen, damit die erste Aufdeckung nicht ruckelt
+  chosen.forEach(f => { const im = new Image(); im.src = imgSrc(f); });
+
+  const cards = shuffle([...chosen, ...chosen]);
+  cards.forEach(img => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.img = img;
+    card.innerHTML = `
+      <div class="card-inner">
+        <div class="card-face card-back"></div>
+        <div class="card-face card-front">
+          <img src="${imgSrc(img)}" alt="" decoding="async" draggable="false">
+        </div>
+      </div>`;
+    card.addEventListener('click', () => onCardClick(card));
+    board.appendChild(card);
+  });
+}
+
+/* ── Card Click ── */
+function onCardClick(card) {
+  if (!canFlip || card.classList.contains('flipped') || card.classList.contains('matched')) return;
+  if (flipped.length >= 2) return;
+
+  card.classList.add('flipped');
+  flipped.push(card);
+
+  if (flipped.length < 2) return;
+
+  canFlip = false;
+  moves++;
+
+  const gen = gameGen;
+  const [a, b] = flipped;
+  if (a.dataset.img === b.dataset.img) {
+    setTimeout(() => {
+      if (gen !== gameGen) return;
+      const color = COLORS[currentPlayer];
+      [a, b].forEach(c => {
+        c.classList.add('matched');
+        c.classList.remove('flipped');
+        c.style.setProperty('--match-color', color);
+      });
+      flipped = []; canFlip = true;
+      scores[currentPlayer]++;
+      matched++;
+      renderChips();
+      if (matched === numPairs) {
+        setTimeout(() => { if (gen === gameGen) showWin(); }, 500);
+        return;
+      }
+      if (numPlayers === 1) updateBanner();
+      else updateBanner(`✓ Treffer! ${names[currentPlayer]} nochmal`);
+    }, 450);
+  } else {
+    setTimeout(() => {
+      if (gen !== gameGen) return;
+      a.classList.remove('flipped');
+      b.classList.remove('flipped');
+      flipped = []; canFlip = true;
+      currentPlayer = (currentPlayer + 1) % numPlayers;
+      renderChips();
+      updateBanner();
+    }, 900);
+  }
+}
+
+/* ── UI Updates ── */
+function renderChips() {
+  const container = $('score-chips');
+  container.innerHTML = '';
+  names.forEach((name, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (i === currentPlayer ? ' active' : '');
+    chip.style.color = COLORS[i];
+    chip.style.background = COLORS_BG[i];
+    chip.textContent = `${name}  ${scores[i]}`;
+    container.appendChild(chip);
+  });
+  // Aktiven Spieler-Chip sichtbar halten, falls die Zeile scrollt
+  container.querySelector('.chip.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+function updateBanner(msg) {
+  const b = $('turn-banner');
+  b.style.background = COLORS_BG[currentPlayer];
+  b.style.color = COLORS[currentPlayer];
+  if (msg) { b.textContent = msg; return; }
+  b.textContent = numPlayers === 1
+    ? `Züge: ${moves}  ·  Gefunden: ${matched} / ${numPairs}`
+    : `${names[currentPlayer]} ist dran`;
+}
+
+/* ── Win Screen ── */
+function showWin() {
+  releaseWakeLock();
+  const elapsed = Date.now() - startTime;
+  const sorted = names.map((n, i) => ({ n, s: scores[i], i }))
+    .sort((a, b) => b.s - a.s);
+
+  $('win-emoji').textContent = numPlayers === 1 ? '🎉' : '🏆';
+
+  if (numPlayers === 1) {
+    $('win-title').textContent = 'Geschafft!';
+    $('win-sub').textContent = `${moves} Züge · ${fmtTime(elapsed)} · ${numPairs} Paare`;
+  } else {
+    const tied = sorted.length > 1 && sorted[0].s === sorted[1].s;
+    $('win-title').textContent = tied ? 'Unentschieden!' : `${sorted[0].n} gewinnt!`;
+    $('win-sub').textContent = `${numPairs} Paare · ${fmtTime(elapsed)}`;
+  }
+
+  const tbl = $('win-table');
+  tbl.innerHTML = `<tr><th>#</th><th>Spieler</th><th style="text-align:right">Paare</th></tr>`;
+  let rank = 0, prevScore = null;
+  sorted.forEach((p, idx) => {
+    if (p.s !== prevScore) { rank = idx; prevScore = p.s; }
+    const tr = document.createElement('tr');
+    if (rank === 0) tr.className = 'win-row-gold';
+    const medal = rank === 0 ? '🥇' : rank === 1 ? '🥈' : rank === 2 ? '🥉' : rank + 1;
+    tr.innerHTML = `
+      <td style="color:${COLORS[p.i]}">${medal}</td>
+      <td style="font-weight:700"></td>
+      <td style="text-align:right;color:${COLORS[p.i]};font-weight:700">${p.s}</td>`;
+    tr.children[1].textContent = p.n;
+    tr.children[1].style.fontWeight = '700';
+    tbl.appendChild(tr);
+  });
+
+  show('screen-win');
+  confetti();
+}
+
+/* ── Confetti ── */
+function confetti() {
+  const canvas = $('confetti-canvas');
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const W = window.innerWidth, H = window.innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.scale(dpr, dpr);
+  const cols = ['#E20074','#FF4FA3','#00B4D8','#7CB518','#F77F00','#fff','#ffd700'];
+  const pieces = Array.from({ length: 140 }, () => ({
+    x: Math.random() * W,
+    y: -20 - Math.random() * H * 0.5,
+    w: 7 + Math.random() * 7, h: 4 + Math.random() * 5,
+    color: cols[Math.floor(Math.random() * cols.length)],
+    speed: 2.5 + Math.random() * 3.5,
+    angle: Math.random() * Math.PI * 2,
+    spin: (Math.random() - 0.5) * 0.18,
+    drift: (Math.random() - 0.5) * 1.5,
+  }));
+  let raf;
+  (function draw() {
+    ctx.clearRect(0, 0, W, H);
+    let done = true;
+    pieces.forEach(p => {
+      p.y += p.speed; p.x += p.drift; p.angle += p.spin;
+      if (p.y < H + 20) done = false;
+      ctx.save();
+      ctx.translate(p.x, p.y); ctx.rotate(p.angle);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    });
+    if (!done) raf = requestAnimationFrame(draw);
+    else ctx.clearRect(0, 0, W, H);
+  })();
+  setTimeout(() => { cancelAnimationFrame(raf); ctx.clearRect(0, 0, W, H); }, 5000);
+}
+
+/* ── Init ── */
+renderNameInputs();
+show('screen-start');
+</script>
+</body>
+</html>
