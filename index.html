@@ -944,6 +944,29 @@ function confetti() {
 const PROTO_V = 1;
 const NET_PREFIX = 'kbr-memory-';
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ohne 0/O, 1/I
+
+/* TURN-Relay (Fallback, wenn keine Direktverbindung möglich ist — Mobilfunk-/Firmennetze).
+   Kostenloses Konto auf https://dashboard.metered.ca anlegen und beide Werte eintragen.
+   Bleiben sie leer, läuft alles wie bisher über reines STUN. */
+const METERED_DOMAIN = 'kbr-memory.metered.live';  // z. B. 'kbrmemory.metered.live'
+const METERED_KEY = '1713c7562f5b3d7cd627fdd6f495c22bfc8b';     // API-Key aus dem Metered-Dashboard
+
+let iceServersCache = null;
+async function getIceServers() {
+  if (iceServersCache) return iceServersCache;
+  const fallback = [{ urls: 'stun:stun.l.google.com:19302' }];
+  if (!METERED_DOMAIN || !METERED_KEY) return fallback;
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 4000);
+    const res = await fetch(`https://${METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${METERED_KEY}`,
+                            { signal: ctrl.signal });
+    clearTimeout(to);
+    const list = await res.json();
+    if (Array.isArray(list) && list.length) { iceServersCache = list; return list; }
+  } catch (e) {} // Dienst nicht erreichbar -> STUN-only wie bisher
+  return fallback;
+}
 let peer = null;       // eigener PeerJS-Peer
 let hostConn = null;   // Gast: DataConnection zum Host
 let conns = [];        // Host: DataConnection je Spielerindex (0 = Host selbst = null)
@@ -1005,12 +1028,13 @@ function netErrText(err) {
 }
 
 /* ── Host-Seite ── */
-function createRoom(hostName, attempt = 0) {
+async function createRoom(hostName, attempt = 0) {
   if (attempt >= 3) { lobbyError('Raum konnte nicht erstellt werden – bitte erneut versuchen.'); return; }
   destroyPeer();
   roomCode = randomCode();
   setLobbyPhase('connecting', 'Erstelle Raum…');
-  peer = new Peer(NET_PREFIX + roomCode);
+  const iceServers = await getIceServers();
+  peer = new Peer(NET_PREFIX + roomCode, { config: { iceServers } });
   const p = peer;
   p.on('open', () => {
     if (p !== peer) return;
@@ -1133,17 +1157,19 @@ function startOnlineGame() {
 
 /* ── Gast-Seite ── */
 let joinTimeout = 0;
-function joinRoom(code, name) {
+async function joinRoom(code, name, attempt = 0) {
   destroyPeer();
-  setLobbyPhase('connecting', 'Verbinde…');
-  peer = new Peer();
+  setLobbyPhase('connecting', attempt ? 'Verbinde… (2. Versuch)' : 'Verbinde…');
+  const iceServers = await getIceServers();
+  peer = new Peer({ config: { iceServers } });
   const p = peer;
   clearTimeout(joinTimeout);
   joinTimeout = setTimeout(() => {
     if (p !== peer) return;
+    if (attempt === 0) { joinRoom(code, name, 1); return; } // ein automatischer zweiter Versuch
     resetNet();
-    lobbyError('Keine Verbindung zum Raum – Code prüfen und erneut versuchen.');
-  }, 10000);
+    lobbyError('Keine Verbindung zum Raum. In diesem Netzwerk ist evtl. keine Direktverbindung möglich – probiere ein anderes WLAN oder mobile Daten.');
+  }, 15000);
   p.on('open', () => {
     if (p !== peer) return;
     hostConn = p.connect(NET_PREFIX + code, { reliable: true });
