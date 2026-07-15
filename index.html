@@ -9,6 +9,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Memory">
   <title>Memory · KBRail Edition</title>
+  <!-- ONLINE --><script src="peerjs.min.js"></script><!-- /ONLINE -->
   <style>
     :root {
       --bg: #0D0D0D;
@@ -253,6 +254,57 @@
       font-weight: 700; cursor: pointer; transition: background 0.15s;
       min-height: 50px;
     }
+
+    /* ── Online-Lobby ── */
+    [hidden] { display: none !important; }
+    .mode-row { width: 100%; max-width: 540px; display: flex; gap: 8px; }
+    .mode-row .pill { flex: 1; }
+    .btn-secondary {
+      background: transparent; border: 1.5px solid var(--surface3); color: var(--text);
+    }
+    .btn-secondary:active { background: var(--surface2); }
+    .btn-back {
+      background: none; border: none; color: var(--text-dim); cursor: pointer;
+      font-family: inherit; font-size: 0.85rem; width: 100%; padding: 10px;
+      margin-top: 12px; min-height: 44px;
+    }
+    .lobby-sec .btn-start + .btn-start { margin-top: 10px; }
+    .room-code {
+      font-size: 2.4rem; font-weight: 900; letter-spacing: 0.25em;
+      color: var(--magenta-l); text-align: center; padding: 8px 0 14px;
+      -webkit-user-select: text; user-select: text;
+    }
+    .room-code-input {
+      text-transform: uppercase; letter-spacing: 0.18em;
+      font-weight: 700; text-align: center;
+    }
+    .lobby-actions { display: flex; gap: 8px; justify-content: center; }
+    .lobby-actions .btn-hdr { flex: 1; max-width: 160px; }
+    .lobby-hint { color: var(--text-dim); font-size: 0.8rem; text-align: center; margin-top: 12px; }
+    .lobby-error {
+      color: var(--magenta-l); background: rgba(226,0,116,0.12);
+      border: 1px solid rgba(226,0,116,0.4); border-radius: 8px;
+      padding: 10px 12px; font-size: 0.85rem; margin-bottom: 16px;
+    }
+    .roster-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+      background: var(--surface2); border-radius: 8px; font-size: 0.9rem; }
+    .roster-row.offline { opacity: 0.4; }
+    .roster-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .roster-tag { color: var(--text-dim); font-size: 0.75rem; flex-shrink: 0; }
+
+    .net-toast {
+      text-align: center; padding: 5px 12px; font-size: 0.75rem; font-weight: 600;
+      background: rgba(226,0,116,0.15); color: var(--magenta-l); flex-shrink: 0;
+    }
+    #net-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.78); z-index: 200;
+      display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .overlay-box {
+      background: var(--surface); border: 1px solid #333; border-radius: 16px;
+      padding: 28px; text-align: center; display: flex; flex-direction: column;
+      gap: 20px; max-width: 340px; font-size: 0.95rem; line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -264,7 +316,12 @@
     <div class="start-sub">KBRail Edition &nbsp;·&nbsp; Findet die passenden Paare</div>
   </div>
 
-  <div class="setup-card">
+  <div class="mode-row" id="mode-pills">
+    <button class="pill active" data-v="local">Lokal spielen</button>
+    <button class="pill" data-v="online" id="pill-online">Online spielen</button>
+  </div>
+
+  <div class="setup-card" id="card-local">
     <div class="setup-label">Anzahl Spieler</div>
     <div class="pill-row" id="player-pills">
       <button class="pill active" data-v="1">1</button>
@@ -286,6 +343,67 @@
 
     <button class="btn-start" id="btn-start">Spiel starten ▶</button>
   </div>
+
+  <div class="setup-card" id="card-online" hidden>
+    <div class="lobby-error" id="lobby-error" hidden></div>
+
+    <div class="lobby-sec" id="sec-choice">
+      <button class="btn-start" id="btn-goto-create">Raum erstellen</button>
+      <button class="btn-start btn-secondary" id="btn-goto-join">Raum beitreten</button>
+    </div>
+
+    <div class="lobby-sec" id="sec-create" hidden>
+      <div class="setup-label">Dein Name</div>
+      <input class="pname-input" id="create-name" placeholder="Dein Name" autocomplete="off" maxlength="16" style="width:100%">
+      <div class="divider"></div>
+      <div class="setup-label">Kartenpaare</div>
+      <div class="pill-row" id="pair-pills-online">
+        <button class="pill active" data-v="15">15</button>
+        <button class="pill" data-v="30">30</button>
+        <button class="pill" data-v="40">40</button>
+        <button class="pill" data-v="50">50</button>
+      </div>
+      <button class="btn-start" id="btn-create">Raum erstellen</button>
+      <button class="btn-back" id="btn-create-back">← Zurück</button>
+    </div>
+
+    <div class="lobby-sec" id="sec-join" hidden>
+      <div class="setup-label">Raum-Code</div>
+      <input class="pname-input room-code-input" id="join-code" placeholder="•••" maxlength="3"
+             autocomplete="off" autocapitalize="characters" spellcheck="false" style="width:100%">
+      <div class="setup-label" style="margin-top:16px">Dein Name</div>
+      <input class="pname-input" id="join-name" placeholder="Dein Name" autocomplete="off" maxlength="16" style="width:100%">
+      <button class="btn-start" id="btn-join">Beitreten</button>
+      <button class="btn-back" id="btn-join-back">← Zurück</button>
+    </div>
+
+    <div class="lobby-sec" id="sec-connecting" hidden>
+      <div class="lobby-hint" id="connecting-text">Verbinde…</div>
+      <button class="btn-back" id="btn-connecting-back">Abbrechen</button>
+    </div>
+
+    <div class="lobby-sec" id="sec-host" hidden>
+      <div class="setup-label">Raum-Code</div>
+      <div class="room-code" id="room-code-display"></div>
+      <div class="lobby-actions">
+        <button class="btn-hdr" id="btn-copy">Link kopieren</button>
+        <button class="btn-hdr" id="btn-share" hidden>Teilen</button>
+      </div>
+      <div class="divider"></div>
+      <div class="setup-label">Spieler</div>
+      <div class="player-rows" id="host-roster"></div>
+      <button class="btn-start" id="btn-online-start" disabled style="margin-top:20px">Spiel starten ▶</button>
+      <div class="lobby-hint" id="host-hint">Mindestens 2 Spieler zum Starten</div>
+      <button class="btn-back" id="btn-host-back">← Raum schließen</button>
+    </div>
+
+    <div class="lobby-sec" id="sec-wait" hidden>
+      <div class="setup-label">Raum <span id="wait-code"></span></div>
+      <div class="player-rows" id="wait-roster"></div>
+      <div class="lobby-hint">Warten auf den Host…</div>
+      <button class="btn-back" id="btn-wait-back">← Verlassen</button>
+    </div>
+  </div>
 </div>
 
 <!-- ── Game Screen ── -->
@@ -299,6 +417,7 @@
     </div>
   </div>
   <div class="turn-banner" id="turn-banner"></div>
+  <div class="net-toast" id="net-toast" hidden></div>
   <div class="board-wrap" id="board-wrap">
     <div class="board" id="board"></div>
   </div>
@@ -311,7 +430,17 @@
   <div class="win-title" id="win-title"></div>
   <div class="win-sub" id="win-sub"></div>
   <table class="win-table" id="win-table"></table>
+  <div class="win-sub" id="win-wait" hidden>Warten auf den Host…</div>
   <button class="btn-again" id="btn-again">Nochmal spielen</button>
+  <button class="btn-again btn-secondary" id="btn-leave" hidden>Verlassen</button>
+</div>
+
+<!-- ── Netz-Overlay (Host weg / Spiel beendet) ── -->
+<div id="net-overlay" hidden>
+  <div class="overlay-box">
+    <div id="net-overlay-text"></div>
+    <button class="btn-again" id="btn-overlay-ok">Zurück zum Start</button>
+  </div>
 </div>
 
 <script>
@@ -385,6 +514,13 @@ let flipped = [], matched = 0, canFlip = true, moves = 0;
 let startTime = 0;
 let gameGen = 0; // entwertet ausstehende Timer alter Spiele
 
+/* Online-State */
+let netRole = 'local';   // 'local' | 'host' | 'guest'
+let netPhase = 'idle';   // 'idle' | 'hosting' | 'playing'
+let myIndex = 0;         // eigener Spielerindex (online)
+let roster = [];         // [{name, connected}] — Index = Spielerindex, 0 = Host
+let deck = [];           // aktuelles Deck als IMAGES-Indizes
+
 /* ── Helpers ── */
 const $ = id => document.getElementById(id);
 const imgSrc = f => f.startsWith('data:') ? f : IMAGE_BASE + encodeURIComponent(f);
@@ -444,23 +580,43 @@ function show(id) {
 }
 
 /* ── Start Game ── */
-$('btn-start').addEventListener('click', () => {
-  gameGen++;
-  const inputs = $('player-rows').querySelectorAll('input');
-  names = Array.from(inputs).map((inp, i) => inp.value.trim() || `Spieler ${i + 1}`);
+function enterGame(deckArr, playerNames) {
+  names = playerNames;
+  numPlayers = names.length;
   scores = Array(numPlayers).fill(0);
   currentPlayer = 0; flipped = []; matched = 0; canFlip = true; moves = 0;
   startTime = Date.now();
-  buildBoard();
+  buildBoard(deckArr);
   renderChips();
   updateBanner();
+  hideToast();
+  $('btn-reset').textContent = netRole === 'guest' ? '✕ Verlassen' : '↩ Neu';
   show('screen-game');
   applyLayout();
   requestWakeLock();
+}
+
+$('btn-start').addEventListener('click', () => {
+  gameGen++;
+  netRole = 'local';
+  const inputs = $('player-rows').querySelectorAll('input');
+  const localNames = Array.from(inputs).map((inp, i) => inp.value.trim() || `Spieler ${i + 1}`);
+  enterGame(makeDeck(numPairs), localNames);
 });
 
-$('btn-reset').addEventListener('click', () => { gameGen++; show('screen-start'); releaseWakeLock(); });
-$('btn-again').addEventListener('click', () => { gameGen++; show('screen-start'); releaseWakeLock(); });
+$('btn-reset').addEventListener('click', () => {
+  leaveOnline();
+  gameGen++; show('screen-start'); releaseWakeLock();
+});
+$('btn-again').addEventListener('click', () => {
+  if (netRole === 'host') { startOnlineGame(); return; } // Rematch
+  leaveOnline();
+  gameGen++; show('screen-start'); releaseWakeLock();
+});
+$('btn-leave').addEventListener('click', () => {
+  leaveOnline();
+  gameGen++; show('screen-start'); releaseWakeLock();
+});
 
 /* ── iOS: :active-Feedback aktivieren, Pinch-Zoom im Spiel unterbinden ── */
 document.addEventListener('touchstart', () => {}, { passive: true });
@@ -500,6 +656,7 @@ function applyLayout() {
   const cs = getComputedStyle(wrap);
   const availW = wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
   const availH = wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  if (availW <= 0 || availH <= 0) return; // noch nicht gerendert — ResizeObserver holt das nach
 
   // Beste Spaltenzahl suchen: maximiert die Kartengröße im verfügbaren Raum
   let best = { size: 0, cols: 2 };
@@ -538,25 +695,33 @@ window.visualViewport?.addEventListener('resize', queueLayout);
 new ResizeObserver(queueLayout).observe($('board-wrap'));
 
 /* ── Build Board ── */
-function buildBoard() {
+function makeDeck(nPairs) {
+  const chosen = shuffle(IMAGES.map((_, i) => i)).slice(0, nPairs);
+  return shuffle([...chosen, ...chosen]);
+}
+
+const boardCards = () => [...$('board').children];
+
+function buildBoard(deckArr) {
   const board = $('board');
   board.innerHTML = '';
-  totalCards = numPairs * 2;
+  deck = deckArr;
+  numPairs = deckArr.length / 2;
+  totalCards = deckArr.length;
 
-  const chosen = shuffle(IMAGES).slice(0, numPairs);
   // Ausgewählte Motive vorladen, damit die erste Aufdeckung nicht ruckelt
-  chosen.forEach(f => { const im = new Image(); im.src = imgSrc(f); });
+  [...new Set(deckArr)].forEach(i => { const im = new Image(); im.src = imgSrc(IMAGES[i]); });
 
-  const cards = shuffle([...chosen, ...chosen]);
-  cards.forEach(img => {
+  deckArr.forEach((imgIdx, i) => {
     const card = document.createElement('div');
     card.className = 'card';
-    card.dataset.img = img;
+    card.dataset.img = imgIdx;  // Motiv-Index — Paarvergleich wie bisher über dataset.img
+    card.dataset.idx = i;       // Board-Position — Kennung im Netzwerkprotokoll
     card.innerHTML = `
       <div class="card-inner">
         <div class="card-face card-back"></div>
         <div class="card-face card-front">
-          <img src="${imgSrc(img)}" alt="" decoding="async" draggable="false">
+          <img src="${imgSrc(IMAGES[imgIdx])}" alt="" decoding="async" draggable="false">
         </div>
       </div>`;
     card.addEventListener('click', () => onCardClick(card));
@@ -566,50 +731,91 @@ function buildBoard() {
 
 /* ── Card Click ── */
 function onCardClick(card) {
-  if (!canFlip || card.classList.contains('flipped') || card.classList.contains('matched')) return;
-  if (flipped.length >= 2) return;
+  if (card.classList.contains('flipped') || card.classList.contains('matched')) return;
+  if (netRole === 'guest') {
+    // Gast mutiert nichts lokal — nur Flip-Wunsch an den Host, der Echo kommt zurück
+    if (myIndex === currentPlayer && canFlip && flipped.length < 2)
+      netSend(hostConn, { v: PROTO_V, t: 'flip', card: +card.dataset.idx });
+    return;
+  }
+  if (netRole === 'host' && currentPlayer !== myIndex) return;
+  if (!canFlip || flipped.length >= 2) return;
+  doFlip(card, currentPlayer);
+}
 
+/* Host + Lokal: Karte aufdecken und ggf. Paar auflösen */
+function doFlip(card, by) {
   card.classList.add('flipped');
   flipped.push(card);
+  if (netRole === 'host') broadcast({ v: PROTO_V, t: 'flip', card: +card.dataset.idx, by });
 
   if (flipped.length < 2) return;
 
   canFlip = false;
   moves++;
 
-  const gen = gameGen;
   const [a, b] = flipped;
-  if (a.dataset.img === b.dataset.img) {
-    setTimeout(() => {
-      if (gen !== gameGen) return;
-      const color = COLORS[currentPlayer];
+  const isMatch = a.dataset.img === b.dataset.img;
+  let auth = null;
+  if (netRole === 'host') {
+    // Ergebnis vorab autoritativ berechnen und sofort broadcasten —
+    // die 450/900-ms-Animation läuft dann auf allen Clients synchron in resolvePair
+    auth = hostComputeResult(isMatch, by);
+    broadcast({ v: PROTO_V, t: 'result', kind: auth.kind, cards: [+a.dataset.idx, +b.dataset.idx],
+                by, scores: auth.scores, next: auth.next, done: auth.done });
+  }
+  resolvePair(a, b, isMatch, by, gameGen, auth);
+}
+
+function nextConnected(from) {
+  for (let k = 1; k <= numPlayers; k++) {
+    const i = (from + k) % numPlayers;
+    if (roster[i]?.connected !== false) return i; // lokal: roster leer -> jeder gilt als verbunden
+  }
+  return (from + 1) % numPlayers;
+}
+
+function hostComputeResult(isMatch, by) {
+  const s = scores.slice();
+  let next = by, done = false;
+  if (isMatch) { s[by]++; done = matched + 1 === numPairs; }
+  else next = nextConnected(by);
+  return { kind: isMatch ? 'match' : 'miss', scores: s, next, done };
+}
+
+/* Gemeinsame Paar-Auflösung für Lokal, Host und Gast — identisches Timing.
+   `auth` (nur online): autoritative Scores/Folgespieler vom Host statt lokaler Berechnung. */
+function resolvePair(a, b, isMatch, by, gen, auth) {
+  setTimeout(() => {
+    if (gen !== gameGen) return;
+    if (isMatch) {
+      const color = COLORS[by];
       [a, b].forEach(c => {
         c.classList.add('matched');
         c.classList.remove('flipped');
         c.style.setProperty('--match-color', color);
+        c.dataset.matchedBy = by;
       });
-      flipped = []; canFlip = true;
-      scores[currentPlayer]++;
+      if (auth) scores = auth.scores.slice(); else scores[by]++;
       matched++;
-      renderChips();
-      if (matched === numPairs) {
-        setTimeout(() => { if (gen === gameGen) showWin(); }, 500);
-        return;
-      }
-      if (numPlayers === 1) updateBanner();
-      else updateBanner(`✓ Treffer! ${names[currentPlayer]} nochmal`);
-    }, 450);
-  } else {
-    setTimeout(() => {
-      if (gen !== gameGen) return;
+    } else {
       a.classList.remove('flipped');
       b.classList.remove('flipped');
-      flipped = []; canFlip = true;
-      currentPlayer = (currentPlayer + 1) % numPlayers;
-      renderChips();
-      updateBanner();
-    }, 900);
-  }
+    }
+    flipped = []; canFlip = true;
+    currentPlayer = auth ? auth.next : (isMatch ? by : nextConnected(by));
+    renderChips();
+    const done = auth ? auth.done : (isMatch && matched === numPairs);
+    if (done) {
+      setTimeout(() => { if (gen === gameGen) showWin(); }, 500);
+      return;
+    }
+    if (isMatch) {
+      if (numPlayers === 1) updateBanner();
+      else if (netRole !== 'local' && by === myIndex) updateBanner('✓ Treffer! Du bist nochmal dran');
+      else updateBanner(`✓ Treffer! ${names[by]} nochmal`);
+    } else updateBanner();
+  }, isMatch ? 450 : 900);
 }
 
 /* ── UI Updates ── */
@@ -621,7 +827,9 @@ function renderChips() {
     chip.className = 'chip' + (i === currentPlayer ? ' active' : '');
     chip.style.color = COLORS[i];
     chip.style.background = COLORS_BG[i];
-    chip.textContent = `${name}  ${scores[i]}`;
+    const me = netRole !== 'local' && i === myIndex ? ' (du)' : '';
+    chip.textContent = `${name}${me}  ${scores[i]}`;
+    if (netRole !== 'local' && roster[i]?.connected === false) chip.style.opacity = '0.4';
     container.appendChild(chip);
   });
   // Aktiven Spieler-Chip sichtbar halten, falls die Zeile scrollt
@@ -633,10 +841,22 @@ function updateBanner(msg) {
   b.style.background = COLORS_BG[currentPlayer];
   b.style.color = COLORS[currentPlayer];
   if (msg) { b.textContent = msg; return; }
-  b.textContent = numPlayers === 1
-    ? `Züge: ${moves}  ·  Gefunden: ${matched} / ${numPairs}`
+  if (numPlayers === 1) { b.textContent = `Züge: ${moves}  ·  Gefunden: ${matched} / ${numPairs}`; return; }
+  b.textContent = netRole !== 'local' && currentPlayer === myIndex
+    ? 'Du bist dran'
     : `${names[currentPlayer]} ist dran`;
 }
+
+/* ── Netz-Toast (dünner Hinweis unter dem Header) ── */
+let toastTimer = 0;
+function showToast(text, sticky) {
+  const t = $('net-toast');
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  if (!sticky) toastTimer = setTimeout(hideToast, 4000);
+}
+function hideToast() { $('net-toast').hidden = true; }
 
 /* ── Win Screen ── */
 function showWin() {
@@ -672,6 +892,11 @@ function showWin() {
     tr.children[1].style.fontWeight = '700';
     tbl.appendChild(tr);
   });
+
+  // Online: nur der Host darf ein Rematch starten
+  $('btn-again').hidden = netRole === 'guest';
+  $('win-wait').hidden = netRole !== 'guest';
+  $('btn-leave').hidden = netRole === 'local';
 
   show('screen-win');
   confetti();
@@ -715,9 +940,478 @@ function confetti() {
   setTimeout(() => { cancelAnimationFrame(raf); ctx.clearRect(0, 0, W, H); }, 5000);
 }
 
+/* ── Netzwerk (Online-Modus über PeerJS, host-autoritativ) ── */
+const PROTO_V = 1;
+const NET_PREFIX = 'kbr-memory-';
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ohne 0/O, 1/I
+let peer = null;       // eigener PeerJS-Peer
+let hostConn = null;   // Gast: DataConnection zum Host
+let conns = [];        // Host: DataConnection je Spielerindex (0 = Host selbst = null)
+let roomCode = '';
+
+const myCid = (() => {  // stabile Kennung pro Tab — erlaubt Rejoin nach Reload
+  let c = sessionStorage.getItem('kbr-cid');
+  if (!c) {
+    c = [...crypto.getRandomValues(new Uint8Array(4))].map(b => b.toString(16).padStart(2, '0')).join('');
+    sessionStorage.setItem('kbr-cid', c);
+  }
+  return c;
+})();
+
+function netSend(conn, msg) { try { conn?.send(msg); } catch (e) {} }
+function broadcast(msg) { conns.forEach(c => netSend(c, msg)); }
+const publicRoster = () => roster.map(r => ({ name: r.name, connected: r.connected }));
+
+function randomCode() {
+  return [...crypto.getRandomValues(new Uint8Array(3))]
+    .map(b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+}
+
+function deferredDestroy() {
+  // Peer erst nach kurzer Frist zerstören, damit letzte Nachrichten (end/bye) noch rausgehen
+  const old = peer;
+  peer = null; hostConn = null; conns = [];
+  setTimeout(() => { try { old?.destroy(); } catch (e) {} }, 500);
+}
+
+function destroyPeer() {
+  try { peer?.destroy(); } catch (e) {}
+  peer = null; hostConn = null; conns = [];
+}
+
+function resetNet() {
+  destroyPeer();
+  netRole = 'local'; netPhase = 'idle';
+  roster = []; myIndex = 0; roomCode = '';
+  gameGen++;
+}
+
+function leaveOnline() {
+  if (netRole === 'host') broadcast({ v: PROTO_V, t: 'end', reason: 'abort' });
+  else if (netRole === 'guest') netSend(hostConn, { v: PROTO_V, t: 'bye' });
+  else return;
+  deferredDestroy();
+  netRole = 'local'; netPhase = 'idle';
+  roster = []; myIndex = 0; roomCode = '';
+  gameGen++;
+  setLobbyPhase('choice');
+}
+
+function netErrText(err) {
+  if (err?.type === 'peer-unavailable') return 'Raum nicht gefunden – Code prüfen.';
+  if (err?.type === 'network' || err?.type === 'server-error' || err?.type === 'socket-error')
+    return 'Verbindungsdienst nicht erreichbar – Internetverbindung prüfen und erneut versuchen.';
+  return 'Verbindung fehlgeschlagen – bitte erneut versuchen.';
+}
+
+/* ── Host-Seite ── */
+function createRoom(hostName, attempt = 0) {
+  if (attempt >= 3) { lobbyError('Raum konnte nicht erstellt werden – bitte erneut versuchen.'); return; }
+  destroyPeer();
+  roomCode = randomCode();
+  setLobbyPhase('connecting', 'Erstelle Raum…');
+  peer = new Peer(NET_PREFIX + roomCode);
+  const p = peer;
+  p.on('open', () => {
+    if (p !== peer) return;
+    netRole = 'host'; netPhase = 'hosting'; myIndex = 0;
+    roster = [{ name: hostName, cid: myCid, connected: true }];
+    conns = [null];
+    renderLobby();
+    setLobbyPhase('host');
+    requestWakeLock(); // schläft das Host-Gerät ein, stirbt der Raum
+  });
+  p.on('error', err => {
+    if (p !== peer) return;
+    if (err.type === 'unavailable-id') { createRoom(hostName, attempt + 1); return; }
+    resetNet();
+    lobbyError(netErrText(err));
+  });
+  p.on('connection', conn => {
+    conn.on('data', msg => hostOnData(conn, msg));
+    conn.on('close', () => hostOnClose(conn));
+    conn.on('error', () => hostOnClose(conn));
+  });
+  p.on('disconnected', () => { try { p.reconnect(); } catch (e) {} });
+}
+
+function hostOnData(conn, msg) {
+  if (!msg || msg.v !== PROTO_V) {
+    netSend(conn, { v: PROTO_V, t: 'reject', reason: 'version' });
+    return;
+  }
+  switch (msg.t) {
+    case 'join': hostOnJoin(conn, msg); break;
+    case 'flip':
+      if (conn._idx >= 1 && netPhase === 'playing') hostHandleFlip(conn._idx, msg.card);
+      break;
+    case 'bye': hostOnClose(conn); break;
+  }
+}
+
+function hostOnJoin(conn, msg) {
+  const name = String(msg.name || '').trim().slice(0, 16) || 'Gast';
+  const existing = roster.findIndex(r => r.cid === msg.cid);
+  if (existing >= 1) {
+    // Rejoin eines bekannten Gasts (z. B. nach Reload)
+    try { conns[existing]?.close(); } catch (e) {}
+    conn._idx = existing;
+    conns[existing] = conn;
+    roster[existing].connected = true;
+    roster[existing].name = name;
+    netSend(conn, { v: PROTO_V, t: 'welcome', you: existing, roster: publicRoster() });
+    if (netPhase === 'playing') netSend(conn, stateSnapshot(existing));
+    rosterChanged();
+    if (netPhase === 'playing') showToast(`${name} ist wieder da`);
+    return;
+  }
+  if (netPhase === 'playing') { netSend(conn, { v: PROTO_V, t: 'reject', reason: 'started' }); return; }
+  if (roster.length >= 4) { netSend(conn, { v: PROTO_V, t: 'reject', reason: 'full' }); return; }
+  const idx = roster.length;
+  conn._idx = idx;
+  roster.push({ name, cid: msg.cid, connected: true });
+  conns[idx] = conn;
+  netSend(conn, { v: PROTO_V, t: 'welcome', you: idx, roster: publicRoster() });
+  rosterChanged();
+}
+
+function rosterChanged() {
+  broadcast({ v: PROTO_V, t: 'roster', roster: publicRoster() });
+  names = roster.map(r => r.name);
+  if (netPhase === 'playing') { renderChips(); updateBanner(); }
+  else renderLobby();
+}
+
+function hostOnClose(conn) {
+  const idx = conn._idx;
+  if (!idx || idx < 1 || conns[idx] !== conn) return;
+  conns[idx] = null;
+  roster[idx].connected = false;
+  rosterChanged();
+  if (netPhase !== 'playing') return;
+  showToast(`${roster[idx].name} ist offline`);
+  const gen = gameGen;
+  const trySkip = () => {
+    if (gen !== gameGen || netPhase !== 'playing') return;
+    if (currentPlayer !== idx || roster[idx].connected || !canFlip) return;
+    // offene Karte(n) des Getrennten zurückdrehen und Zug weitergeben
+    const open = flipped.map(c => +c.dataset.idx);
+    flipped.forEach(c => c.classList.remove('flipped'));
+    flipped = [];
+    currentPlayer = nextConnected(idx);
+    broadcast({ v: PROTO_V, t: 'skip', cards: open, next: currentPlayer });
+    renderChips(); updateBanner();
+  };
+  trySkip();
+  setTimeout(trySkip, 1100); // falls beim Abbruch gerade eine 450/900-ms-Auflösung lief
+}
+
+function hostHandleFlip(fromIdx, cardIdx) {
+  if (fromIdx !== currentPlayer || !canFlip || flipped.length >= 2) return;
+  const card = boardCards()[cardIdx];
+  if (!card || card.classList.contains('flipped') || card.classList.contains('matched')) return;
+  doFlip(card, fromIdx);
+}
+
+function stateSnapshot(youIdx) {
+  const cards = boardCards();
+  return {
+    v: PROTO_V, t: 'state', you: youIdx, deck, numPairs,
+    matchedBy: cards.map(c => c.classList.contains('matched') ? +c.dataset.matchedBy : -1),
+    open: flipped.map(c => +c.dataset.idx),
+    scores, next: currentPlayer, roster: publicRoster(),
+  };
+}
+
+function startOnlineGame() {
+  gameGen++;
+  netPhase = 'playing';
+  const d = makeDeck(numPairs);
+  broadcast({ v: PROTO_V, t: 'start', deck: d, numPairs, roster: publicRoster() });
+  enterGame(d, roster.map(r => r.name));
+}
+
+/* ── Gast-Seite ── */
+let joinTimeout = 0;
+function joinRoom(code, name) {
+  destroyPeer();
+  setLobbyPhase('connecting', 'Verbinde…');
+  peer = new Peer();
+  const p = peer;
+  clearTimeout(joinTimeout);
+  joinTimeout = setTimeout(() => {
+    if (p !== peer) return;
+    resetNet();
+    lobbyError('Keine Verbindung zum Raum – Code prüfen und erneut versuchen.');
+  }, 10000);
+  p.on('open', () => {
+    if (p !== peer) return;
+    hostConn = p.connect(NET_PREFIX + code, { reliable: true });
+    hostConn.on('open', () => netSend(hostConn, { v: PROTO_V, t: 'join', name, cid: myCid }));
+    hostConn.on('data', msg => { if (p === peer) guestOnData(msg); });
+    hostConn.on('close', () => guestHostLost());
+  });
+  p.on('error', err => {
+    if (p !== peer) return;
+    clearTimeout(joinTimeout);
+    resetNet();
+    lobbyError(netErrText(err));
+  });
+}
+
+function guestOnData(msg) {
+  if (!msg || msg.v !== PROTO_V) return;
+  clearTimeout(joinTimeout);
+  switch (msg.t) {
+    case 'welcome':
+      netRole = 'guest'; netPhase = 'hosting';
+      myIndex = msg.you;
+      roster = msg.roster;
+      $('wait-code').textContent = roomCode;
+      renderLobby();
+      setLobbyPhase('wait');
+      requestWakeLock();
+      break;
+
+    case 'reject': {
+      const map = {
+        full: 'Der Raum ist voll (max. 4 Spieler).',
+        started: 'Das Spiel läuft bereits.',
+        version: 'Der Host nutzt eine andere Spielversion – Seite bei allen neu laden.',
+      };
+      resetNet();
+      lobbyError(map[msg.reason] || 'Beitritt abgelehnt.');
+      break;
+    }
+
+    case 'roster':
+      roster = msg.roster;
+      names = roster.map(r => r.name);
+      if (netPhase === 'playing') { renderChips(); updateBanner(); }
+      else renderLobby();
+      break;
+
+    case 'start':
+      gameGen++;
+      netPhase = 'playing';
+      roster = msg.roster;
+      enterGame(msg.deck, roster.map(r => r.name));
+      break;
+
+    case 'flip': {
+      const card = boardCards()[msg.card];
+      if (card && !card.classList.contains('flipped') && !card.classList.contains('matched')) {
+        card.classList.add('flipped');
+        flipped.push(card);
+      }
+      break;
+    }
+
+    case 'result': {
+      const [a, b] = msg.cards.map(i => boardCards()[i]);
+      if (!a || !b) break;
+      canFlip = false;
+      flipped = [];
+      resolvePair(a, b, msg.kind === 'match', msg.by, gameGen, msg);
+      break;
+    }
+
+    case 'skip':
+      (msg.cards || []).forEach(i => boardCards()[i]?.classList.remove('flipped'));
+      flipped = []; canFlip = true;
+      currentPlayer = msg.next;
+      renderChips(); updateBanner();
+      break;
+
+    case 'state': {
+      // Voll-Snapshot nach Rejoin: Board samt gematchten/offenen Karten wiederherstellen
+      gameGen++;
+      netPhase = 'playing';
+      myIndex = msg.you;
+      roster = msg.roster;
+      enterGame(msg.deck, roster.map(r => r.name));
+      const cards = boardCards();
+      let matchedCards = 0;
+      msg.matchedBy.forEach((by, i) => {
+        if (by < 0) return;
+        cards[i].classList.add('matched');
+        cards[i].style.setProperty('--match-color', COLORS[by]);
+        cards[i].dataset.matchedBy = by;
+        matchedCards++;
+      });
+      matched = matchedCards / 2;
+      (msg.open || []).forEach(i => {
+        const c = cards[i];
+        if (c && !c.classList.contains('matched')) { c.classList.add('flipped'); flipped.push(c); }
+      });
+      scores = msg.scores.slice();
+      currentPlayer = msg.next;
+      renderChips(); updateBanner();
+      break;
+    }
+
+    case 'end':
+      if (netPhase === 'playing' || $('screen-win').classList.contains('active')) {
+        netOverlay(msg.reason === 'closed' ? 'Der Host hat den Raum geschlossen.' : 'Der Host hat das Spiel beendet.');
+      } else {
+        resetNet();
+        lobbyError('Der Host hat den Raum geschlossen.');
+      }
+      break;
+  }
+}
+
+function guestHostLost() {
+  if (netRole !== 'guest') return;
+  if (netPhase === 'playing' || $('screen-win').classList.contains('active')) {
+    netOverlay('Verbindung zum Host verloren.');
+  } else {
+    resetNet();
+    lobbyError('Verbindung zum Host verloren.');
+  }
+}
+
+function netOverlay(text) {
+  resetNet();
+  releaseWakeLock();
+  $('net-overlay-text').textContent = text;
+  $('net-overlay').hidden = false;
+}
+$('btn-overlay-ok').addEventListener('click', () => {
+  $('net-overlay').hidden = true;
+  setLobbyPhase('choice');
+  show('screen-start');
+});
+
+/* ── Lobby-UI ── */
+const LOBBY_SECS = ['choice', 'create', 'join', 'connecting', 'host', 'wait'];
+let lastFormSec = 'choice';
+
+function setLobbyPhase(sec, connectingText) {
+  LOBBY_SECS.forEach(s => { $('sec-' + s).hidden = s !== sec; });
+  if (sec === 'create' || sec === 'join') lastFormSec = sec;
+  if (connectingText) $('connecting-text').textContent = connectingText;
+}
+function lobbyError(text) {
+  setLobbyPhase(lastFormSec);
+  const e = $('lobby-error');
+  e.textContent = text;
+  e.hidden = false;
+}
+function hideLobbyError() { $('lobby-error').hidden = true; }
+
+function activatePill(groupId, v) {
+  document.querySelectorAll(`#${groupId} .pill`)
+    .forEach(x => x.classList.toggle('active', x.dataset.v === String(v)));
+}
+
+function selectMode(v) {
+  const online = v === 'online';
+  $('card-local').hidden = online;
+  $('card-online').hidden = !online;
+  if (!online && netRole !== 'local') leaveOnline();
+  const group = online ? 'pair-pills-online' : 'pair-pills';
+  numPairs = +document.querySelector(`#${group} .pill.active`).dataset.v;
+  hideLobbyError();
+}
+makePills('mode-pills', selectMode);
+makePills('pair-pills-online', v => { numPairs = +v; });
+
+$('btn-goto-create').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('create'); });
+$('btn-goto-join').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('join'); });
+$('btn-create-back').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('choice'); });
+$('btn-join-back').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('choice'); });
+$('btn-connecting-back').addEventListener('click', () => { resetNet(); setLobbyPhase(lastFormSec); });
+$('btn-host-back').addEventListener('click', leaveOnline);
+$('btn-wait-back').addEventListener('click', leaveOnline);
+
+$('btn-create').addEventListener('click', () => {
+  hideLobbyError();
+  const name = $('create-name').value.trim().slice(0, 16) || 'Host';
+  localStorage.setItem('kbr-name', name);
+  createRoom(name);
+});
+
+$('join-code').addEventListener('input', e => {
+  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+});
+$('btn-join').addEventListener('click', () => {
+  hideLobbyError();
+  const code = $('join-code').value.trim();
+  if (code.length !== 3) { lobbyError('Bitte den 3-stelligen Raum-Code eingeben.'); return; }
+  const name = $('join-name').value.trim().slice(0, 16) || 'Gast';
+  localStorage.setItem('kbr-name', name);
+  roomCode = code;
+  joinRoom(code, name);
+});
+
+$('btn-online-start').addEventListener('click', () => {
+  if (roster.filter(r => r.connected !== false).length >= 2) startOnlineGame();
+});
+
+const shareUrl = () => location.origin + location.pathname + '?join=' + roomCode;
+$('btn-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(shareUrl());
+    $('btn-copy').textContent = '✓ Kopiert';
+    setTimeout(() => { $('btn-copy').textContent = 'Link kopieren'; }, 2000);
+  } catch (e) {}
+});
+if (navigator.share) {
+  $('btn-share').hidden = false;
+  $('btn-share').addEventListener('click', () => {
+    navigator.share({ title: 'Memory · KBRail Edition', text: 'Spiel mit! Raum-Code: ' + roomCode, url: shareUrl() })
+      .catch(() => {});
+  });
+}
+
+function renderLobby() {
+  $('room-code-display').textContent = roomCode;
+  ['host-roster', 'wait-roster'].forEach(id => {
+    const el = $(id);
+    el.innerHTML = '';
+    roster.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.className = 'roster-row' + (r.connected === false ? ' offline' : '');
+      const dot = document.createElement('div');
+      dot.className = 'pdot';
+      dot.style.background = COLORS[i];
+      const nm = document.createElement('div');
+      nm.className = 'roster-name';
+      nm.textContent = r.name;
+      const tag = document.createElement('div');
+      tag.className = 'roster-tag';
+      tag.textContent = [i === 0 ? 'Host' : '', i === myIndex ? 'du' : '', r.connected === false ? 'offline' : '']
+        .filter(Boolean).join(' · ');
+      row.append(dot, nm, tag);
+      el.appendChild(row);
+    });
+  });
+  const connected = roster.filter(r => r.connected !== false).length;
+  $('btn-online-start').disabled = connected < 2;
+  $('host-hint').hidden = connected >= 2;
+}
+
 /* ── Init ── */
 renderNameInputs();
 show('screen-start');
+
+if (typeof Peer === 'undefined') {
+  // Standalone-Version ohne PeerJS: Online-Modus komplett ausblenden
+  $('mode-pills').hidden = true;
+  $('card-online').hidden = true;
+} else {
+  const savedName = localStorage.getItem('kbr-name') || '';
+  $('create-name').value = savedName;
+  $('join-name').value = savedName;
+  const joinParam = new URLSearchParams(location.search).get('join');
+  if (joinParam && /^[A-Za-z0-9]{3}$/.test(joinParam)) {
+    activatePill('mode-pills', 'online');
+    selectMode('online');
+    setLobbyPhase('join');
+    $('join-code').value = joinParam.toUpperCase();
+  }
+}
 </script>
 </body>
 </html>
