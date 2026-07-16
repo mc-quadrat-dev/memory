@@ -292,6 +292,24 @@
     .roster-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .roster-tag { color: var(--text-dim); font-size: 0.75rem; flex-shrink: 0; }
 
+    .slider-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+    .slider-head .setup-label { margin-bottom: 0; }
+    .pair-val { color: var(--magenta-l); font-weight: 800; font-size: 0.95rem; }
+    .pair-slider {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 6px;
+      border-radius: 100px; background: var(--surface3); outline: none; margin: 6px 0 2px;
+    }
+    .pair-slider::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 28px; height: 28px;
+      border-radius: 50%; background: var(--magenta); border: 3px solid #fff; cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+    .pair-slider::-moz-range-thumb {
+      width: 28px; height: 28px; border-radius: 50%; background: var(--magenta);
+      border: 3px solid #fff; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+    .choice-btns { display: flex; gap: 8px; }
+    .choice-btns .btn-start { flex: 1; margin-top: 0; }
     .public-toggle {
       display: flex; align-items: center; gap: 10px; margin-top: 16px;
       font-size: 0.9rem; cursor: pointer; -webkit-user-select: none; user-select: none;
@@ -350,13 +368,11 @@
 
     <div class="divider"></div>
 
-    <div class="setup-label">Kartenpaare</div>
-    <div class="pill-row" id="pair-pills">
-      <button class="pill active" data-v="15">15</button>
-      <button class="pill" data-v="30">30</button>
-      <button class="pill" data-v="40">40</button>
-      <button class="pill" data-v="50">50</button>
+    <div class="slider-head">
+      <span class="setup-label">Kartenpaare</span>
+      <span class="pair-val" id="pair-val-local">15 Paare</span>
     </div>
+    <input type="range" class="pair-slider" id="pair-slider-local" min="5" max="50" step="5" value="15" aria-label="Anzahl Kartenpaare">
 
     <button class="btn-start" id="btn-start">Spiel starten ▶</button>
   </div>
@@ -365,22 +381,27 @@
     <div class="lobby-error" id="lobby-error" hidden></div>
 
     <div class="lobby-sec" id="sec-choice">
-      <button class="btn-start" id="btn-goto-browse" hidden>Offene Spiele ansehen</button>
-      <button class="btn-start btn-secondary" id="btn-goto-create">Raum erstellen</button>
-      <button class="btn-start btn-secondary" id="btn-goto-join">Per Code beitreten</button>
+      <div class="choice-btns">
+        <button class="btn-start" id="btn-goto-create">Spiel erstellen</button>
+        <button class="btn-start btn-secondary" id="btn-goto-join">Per Code beitreten</button>
+      </div>
+      <div id="browse-wrap" hidden>
+        <div class="setup-label" style="margin-top:22px">Dein Name</div>
+        <input class="pname-input" id="browse-name" placeholder="Dein Name" autocomplete="off" maxlength="16" style="width:100%">
+        <div class="setup-label" style="margin-top:16px">Offene Spiele</div>
+        <div id="browse-list"></div>
+      </div>
     </div>
 
     <div class="lobby-sec" id="sec-create" hidden>
       <div class="setup-label">Dein Name</div>
       <input class="pname-input" id="create-name" placeholder="Dein Name" autocomplete="off" maxlength="16" style="width:100%">
       <div class="divider"></div>
-      <div class="setup-label">Kartenpaare</div>
-      <div class="pill-row" id="pair-pills-online">
-        <button class="pill active" data-v="15">15</button>
-        <button class="pill" data-v="30">30</button>
-        <button class="pill" data-v="40">40</button>
-        <button class="pill" data-v="50">50</button>
+      <div class="slider-head">
+        <span class="setup-label">Kartenpaare</span>
+        <span class="pair-val" id="pair-val-online">15 Paare</span>
       </div>
+      <input type="range" class="pair-slider" id="pair-slider-online" min="5" max="50" step="5" value="15" aria-label="Anzahl Kartenpaare">
       <label class="public-toggle" id="public-toggle-row" hidden>
         <input type="checkbox" id="create-public" checked>
         <span>🌐 In der offenen Lobby anzeigen</span>
@@ -427,13 +448,6 @@
       <button class="btn-back" id="btn-wait-back">← Verlassen</button>
     </div>
 
-    <div class="lobby-sec" id="sec-browse" hidden>
-      <div class="setup-label">Dein Name</div>
-      <input class="pname-input" id="browse-name" placeholder="Dein Name" autocomplete="off" maxlength="16" style="width:100%">
-      <div class="setup-label" style="margin-top:16px">Offene Spiele</div>
-      <div id="browse-list"></div>
-      <button class="btn-back" id="btn-browse-back">← Zurück</button>
-    </div>
   </div>
 </div>
 
@@ -580,7 +594,17 @@ function makePills(groupId, onSelect) {
 }
 
 makePills('player-pills', v => { numPlayers = +v; renderNameInputs(); });
-makePills('pair-pills', v => { numPairs = +v; });
+
+// Kartenpaare-Slider (5er-Schritte, 5–50); ein Slider je Modus, gemeinsames numPairs
+function setupPairSlider(sliderId, valId) {
+  const s = $(sliderId), v = $(valId);
+  const update = () => { numPairs = +s.value; v.textContent = `${s.value} Paare`; };
+  s.addEventListener('input', update);
+  return update;
+}
+const updateLocalPairs = setupPairSlider('pair-slider-local', 'pair-val-local');
+const updateOnlinePairs = setupPairSlider('pair-slider-online', 'pair-val-online');
+updateLocalPairs();
 
 /* ── Player Name Inputs ── */
 function renderNameInputs() {
@@ -1432,13 +1456,16 @@ $('btn-overlay-ok').addEventListener('click', () => {
 });
 
 /* ── Lobby-UI ── */
-const LOBBY_SECS = ['choice', 'create', 'join', 'connecting', 'host', 'wait', 'browse'];
+const LOBBY_SECS = ['choice', 'create', 'join', 'connecting', 'host', 'wait'];
 let lastFormSec = 'choice';
 
 function setLobbyPhase(sec, connectingText) {
   LOBBY_SECS.forEach(s => { $('sec-' + s).hidden = s !== sec; });
   if (sec === 'create' || sec === 'join') lastFormSec = sec;
   if (connectingText) $('connecting-text').textContent = connectingText;
+  // Offene Raumliste läuft nur, während die Startauswahl sichtbar ist
+  if (sec === 'choice' && lobbyEnabled()) startBrowsing();
+  else browseStop();
 }
 function lobbyError(text) {
   setLobbyPhase(lastFormSec);
@@ -1458,20 +1485,17 @@ function selectMode(v) {
   $('card-local').hidden = online;
   $('card-online').hidden = !online;
   if (!online && netRole !== 'local') leaveOnline();
-  if (!online) browseStop();
-  const group = online ? 'pair-pills-online' : 'pair-pills';
-  numPairs = +document.querySelector(`#${group} .pill.active`).dataset.v;
+  (online ? updateOnlinePairs : updateLocalPairs)();
   hideLobbyError();
+  if (online) setLobbyPhase('choice'); // zeigt sofort die offenen Räume
+  else browseStop();
 }
 makePills('mode-pills', selectMode);
-makePills('pair-pills-online', v => { numPairs = +v; });
 
 $('btn-goto-create').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('create'); });
 $('btn-goto-join').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('join'); });
-$('btn-goto-browse').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('browse'); startBrowsing(); });
 $('btn-create-back').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('choice'); });
 $('btn-join-back').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('choice'); });
-$('btn-browse-back').addEventListener('click', () => { browseStop(); hideLobbyError(); setLobbyPhase('choice'); });
 $('btn-connecting-back').addEventListener('click', () => { resetNet(); setLobbyPhase(lastFormSec); });
 $('btn-host-back').addEventListener('click', leaveOnline);
 $('btn-wait-back').addEventListener('click', leaveOnline);
@@ -1486,6 +1510,7 @@ $('btn-create').addEventListener('click', () => {
 
 /* ── Browse: offene Raumliste ── */
 function startBrowsing() {
+  if (rtBrowse) return; // läuft bereits
   $('browse-list').innerHTML = '<div class="lobby-hint">Suche nach Spielen…</div>';
   browseStart(renderBrowseList);
 }
@@ -1515,6 +1540,7 @@ function renderBrowseList(rooms) {
 function joinFromBrowse(code) {
   const name = $('browse-name').value.trim().slice(0, 16) || 'Gast';
   localStorage.setItem('kbr-name', name);
+  lastFormSec = 'choice'; // ein fehlgeschlagener Beitritt führt zurück zur Raumliste
   browseStop();
   roomCode = code;
   joinRoom(code, name);
@@ -1594,7 +1620,7 @@ if (typeof Peer === 'undefined') {
   $('join-name').value = savedName;
   $('browse-name').value = savedName;
   if (lobbyEnabled()) {
-    $('btn-goto-browse').hidden = false;
+    $('browse-wrap').hidden = false;
     $('public-toggle-row').hidden = false;
   }
   const joinParam = new URLSearchParams(location.search).get('join');
