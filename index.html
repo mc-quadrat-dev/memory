@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Memory">
   <title>Memory · KBRail Edition</title>
-  <!-- ONLINE --><script src="peerjs.min.js"></script><!-- /ONLINE -->
+  <!-- ONLINE --><script src="peerjs.min.js"></script><script src="metered-realtime.min.js"></script><!-- /ONLINE -->
   <style>
     :root {
       --bg: #0D0D0D;
@@ -292,6 +292,23 @@
     .roster-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .roster-tag { color: var(--text-dim); font-size: 0.75rem; flex-shrink: 0; }
 
+    .public-toggle {
+      display: flex; align-items: center; gap: 10px; margin-top: 16px;
+      font-size: 0.9rem; cursor: pointer; -webkit-user-select: none; user-select: none;
+    }
+    .public-toggle input { width: 20px; height: 20px; accent-color: var(--magenta); flex-shrink: 0; }
+
+    .browse-row {
+      display: flex; align-items: center; gap: 10px; width: 100%;
+      padding: 12px; margin-bottom: 8px; text-align: left;
+      background: var(--surface2); border: 1px solid var(--surface3);
+      border-radius: 8px; color: var(--text); font-family: inherit; cursor: pointer;
+    }
+    .browse-row:active { background: var(--surface3); }
+    .browse-row .roster-name { font-weight: 700; }
+    .browse-join { color: var(--magenta-l); font-size: 0.8rem; font-weight: 700; flex-shrink: 0; }
+    @media (hover: hover) { .browse-row:hover { border-color: var(--magenta-l); } }
+
     .net-toast {
       text-align: center; padding: 5px 12px; font-size: 0.75rem; font-weight: 600;
       background: rgba(226,0,116,0.15); color: var(--magenta-l); flex-shrink: 0;
@@ -348,8 +365,9 @@
     <div class="lobby-error" id="lobby-error" hidden></div>
 
     <div class="lobby-sec" id="sec-choice">
-      <button class="btn-start" id="btn-goto-create">Raum erstellen</button>
-      <button class="btn-start btn-secondary" id="btn-goto-join">Raum beitreten</button>
+      <button class="btn-start" id="btn-goto-browse" hidden>Offene Spiele ansehen</button>
+      <button class="btn-start btn-secondary" id="btn-goto-create">Raum erstellen</button>
+      <button class="btn-start btn-secondary" id="btn-goto-join">Per Code beitreten</button>
     </div>
 
     <div class="lobby-sec" id="sec-create" hidden>
@@ -363,6 +381,10 @@
         <button class="pill" data-v="40">40</button>
         <button class="pill" data-v="50">50</button>
       </div>
+      <label class="public-toggle" id="public-toggle-row" hidden>
+        <input type="checkbox" id="create-public" checked>
+        <span>🌐 In der offenen Lobby anzeigen</span>
+      </label>
       <button class="btn-start" id="btn-create">Raum erstellen</button>
       <button class="btn-back" id="btn-create-back">← Zurück</button>
     </div>
@@ -385,6 +407,7 @@
     <div class="lobby-sec" id="sec-host" hidden>
       <div class="setup-label">Raum-Code</div>
       <div class="room-code" id="room-code-display"></div>
+      <div class="lobby-hint" id="host-visibility" style="margin-top:0;margin-bottom:14px"></div>
       <div class="lobby-actions">
         <button class="btn-hdr" id="btn-copy">Link kopieren</button>
         <button class="btn-hdr" id="btn-share" hidden>Teilen</button>
@@ -402,6 +425,14 @@
       <div class="player-rows" id="wait-roster"></div>
       <div class="lobby-hint">Warten auf den Host…</div>
       <button class="btn-back" id="btn-wait-back">← Verlassen</button>
+    </div>
+
+    <div class="lobby-sec" id="sec-browse" hidden>
+      <div class="setup-label">Dein Name</div>
+      <input class="pname-input" id="browse-name" placeholder="Dein Name" autocomplete="off" maxlength="16" style="width:100%">
+      <div class="setup-label" style="margin-top:16px">Offene Spiele</div>
+      <div id="browse-list"></div>
+      <button class="btn-back" id="btn-browse-back">← Zurück</button>
     </div>
   </div>
 </div>
@@ -951,6 +982,14 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ohne 0/O, 1/I
 const METERED_DOMAIN = 'kbr-memory.metered.live';  // z. B. 'kbrmemory.metered.live'
 const METERED_KEY = '1713c7562f5b3d7cd627fdd6f495c22bfc8b';     // API-Key aus dem Metered-Dashboard
 
+/* Offene Lobby (Live-Raumliste) über Metered Realtime Messaging.
+   Publishable-Key (pk_...) aus dem Metered-Dashboard → Realtime Messaging → Keys.
+   Bleibt er leer, wird die offene Lobby ausgeblendet; Code-System läuft normal weiter. */
+const METERED_RT_KEY = 'pk_live_f4f7506eb61c5e47650f03c639bf67c86b27a8cd';
+const LOBBY_CHANNEL = 'kbr-lobby';
+const RT_LIB = (typeof MeteredPeer !== 'undefined' && MeteredPeer.SignallingClient) ? MeteredPeer.SignallingClient : null;
+const lobbyEnabled = () => !!(RT_LIB && METERED_RT_KEY);
+
 let iceServersCache = null;
 async function getIceServers() {
   if (iceServersCache) return iceServersCache;
@@ -967,6 +1006,79 @@ async function getIceServers() {
   } catch (e) {} // Dienst nicht erreichbar -> STUN-only wie bisher
   return fallback;
 }
+
+/* ── Offene Lobby via Metered Realtime (nur Raum-Registry; Spiel bleibt PeerJS-P2P) ──
+   Presence-Metadaten sind mit einem pk_-Key nicht setzbar, daher werden Rauminfos
+   als Channel-Nachrichten verteilt. Räume werden nach der Sender-peerId (`from`)
+   indiziert — verschwindet ein Host (presence `left`), fällt sein Raum automatisch raus. */
+let rtHost = null, hostRoomMeta = null;
+
+async function hostLobbyStart(meta) {
+  if (!lobbyEnabled()) return;
+  hostRoomMeta = meta;
+  try {
+    const c = new RT_LIB({ apiKey: METERED_RT_KEY });
+    rtHost = c;
+    c.on('message', ({ data }) => { if (data && data.k === 'query') announceRoom(); });
+    await c.connect();
+    if (rtHost !== c) { try { await c.close(); } catch (e) {} return; }
+    await c.subscribe(LOBBY_CHANNEL);
+    announceRoom();
+  } catch (e) { rtHost = null; } // Lobby ist optional — Fehler nicht fatal
+}
+function announceRoom() {
+  if (rtHost && hostRoomMeta) rtHost.publish(LOBBY_CHANNEL, { k: 'room', ...hostRoomMeta }).catch(() => {});
+}
+function hostLobbyUpdate(patch) {
+  if (!hostRoomMeta) return;
+  hostRoomMeta = { ...hostRoomMeta, ...patch };
+  announceRoom();
+}
+async function hostLobbyStop() {
+  const c = rtHost, meta = hostRoomMeta;
+  rtHost = null; hostRoomMeta = null;
+  if (!c) return;
+  try { if (meta) await c.publish(LOBBY_CHANNEL, { k: 'closed', code: meta.code }); } catch (e) {}
+  try { await c.close(); } catch (e) {}
+}
+
+let rtBrowse = null, browseRooms = new Map(), browseCb = null;
+async function browseStart(onChange) {
+  browseCb = onChange;
+  browseRooms.clear();
+  if (!lobbyEnabled()) { onChange('unavailable'); return; }
+  try {
+    const c = new RT_LIB({ apiKey: METERED_RT_KEY });
+    rtBrowse = c;
+    c.on('message', ({ from, data }) => {
+      if (!data) return;
+      if (data.k === 'room') { browseRooms.set(from, { ...data, from }); emitRooms(); }
+      else if (data.k === 'closed') {
+        for (const [pid, r] of browseRooms) if (r.code === data.code) browseRooms.delete(pid);
+        emitRooms();
+      }
+    });
+    c.on('presence', ({ left }) => {
+      let changed = false;
+      (left || []).forEach(p => { if (browseRooms.delete(p.peerId)) changed = true; });
+      if (changed) emitRooms();
+    });
+    await c.connect();
+    if (rtBrowse !== c) { try { await c.close(); } catch (e) {} return; }
+    await c.subscribe(LOBBY_CHANNEL);
+    await c.publish(LOBBY_CHANNEL, { k: 'query' });
+    emitRooms();
+  } catch (e) { rtBrowse = null; browseCb?.('error'); }
+}
+function emitRooms() {
+  if (browseCb) browseCb([...browseRooms.values()].filter(r => (r.players || 0) < (r.max || 4)));
+}
+async function browseStop() {
+  browseCb = null;
+  const c = rtBrowse; rtBrowse = null; browseRooms.clear();
+  if (c) { try { await c.close(); } catch (e) {} }
+}
+
 let peer = null;       // eigener PeerJS-Peer
 let hostConn = null;   // Gast: DataConnection zum Host
 let conns = [];        // Host: DataConnection je Spielerindex (0 = Host selbst = null)
@@ -1010,7 +1122,7 @@ function resetNet() {
 }
 
 function leaveOnline() {
-  if (netRole === 'host') broadcast({ v: PROTO_V, t: 'end', reason: 'abort' });
+  if (netRole === 'host') { broadcast({ v: PROTO_V, t: 'end', reason: 'abort' }); hostLobbyStop(); }
   else if (netRole === 'guest') netSend(hostConn, { v: PROTO_V, t: 'bye' });
   else return;
   deferredDestroy();
@@ -1028,6 +1140,13 @@ function netErrText(err) {
 }
 
 /* ── Host-Seite ── */
+let roomPublic = true; // Öffentlich-Schalter beim Erstellen
+function updateHostVisibility() {
+  const el = $('host-visibility');
+  const publicNow = roomPublic && lobbyEnabled();
+  el.textContent = publicNow ? '🌐 In der offenen Lobby sichtbar' : '🔒 Privat – nur per Code';
+}
+
 async function createRoom(hostName, attempt = 0) {
   if (attempt >= 3) { lobbyError('Raum konnte nicht erstellt werden – bitte erneut versuchen.'); return; }
   destroyPeer();
@@ -1043,6 +1162,8 @@ async function createRoom(hostName, attempt = 0) {
     conns = [null];
     renderLobby();
     setLobbyPhase('host');
+    updateHostVisibility();
+    if (roomPublic) hostLobbyStart({ code: roomCode, host: hostName, players: 1, max: 4 });
     requestWakeLock(); // schläft das Host-Gerät ein, stirbt der Raum
   });
   p.on('error', err => {
@@ -1103,7 +1224,7 @@ function rosterChanged() {
   broadcast({ v: PROTO_V, t: 'roster', roster: publicRoster() });
   names = roster.map(r => r.name);
   if (netPhase === 'playing') { renderChips(); updateBanner(); }
-  else renderLobby();
+  else { renderLobby(); hostLobbyUpdate({ players: roster.filter(r => r.connected !== false).length }); }
 }
 
 function hostOnClose(conn) {
@@ -1150,6 +1271,7 @@ function stateSnapshot(youIdx) {
 function startOnlineGame() {
   gameGen++;
   netPhase = 'playing';
+  hostLobbyStop(); // Raum aus der offenen Liste nehmen, sobald das Spiel läuft
   const d = makeDeck(numPairs);
   broadcast({ v: PROTO_V, t: 'start', deck: d, numPairs, roster: publicRoster() });
   enterGame(d, roster.map(r => r.name));
@@ -1310,7 +1432,7 @@ $('btn-overlay-ok').addEventListener('click', () => {
 });
 
 /* ── Lobby-UI ── */
-const LOBBY_SECS = ['choice', 'create', 'join', 'connecting', 'host', 'wait'];
+const LOBBY_SECS = ['choice', 'create', 'join', 'connecting', 'host', 'wait', 'browse'];
 let lastFormSec = 'choice';
 
 function setLobbyPhase(sec, connectingText) {
@@ -1336,6 +1458,7 @@ function selectMode(v) {
   $('card-local').hidden = online;
   $('card-online').hidden = !online;
   if (!online && netRole !== 'local') leaveOnline();
+  if (!online) browseStop();
   const group = online ? 'pair-pills-online' : 'pair-pills';
   numPairs = +document.querySelector(`#${group} .pill.active`).dataset.v;
   hideLobbyError();
@@ -1345,18 +1468,57 @@ makePills('pair-pills-online', v => { numPairs = +v; });
 
 $('btn-goto-create').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('create'); });
 $('btn-goto-join').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('join'); });
+$('btn-goto-browse').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('browse'); startBrowsing(); });
 $('btn-create-back').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('choice'); });
 $('btn-join-back').addEventListener('click', () => { hideLobbyError(); setLobbyPhase('choice'); });
+$('btn-browse-back').addEventListener('click', () => { browseStop(); hideLobbyError(); setLobbyPhase('choice'); });
 $('btn-connecting-back').addEventListener('click', () => { resetNet(); setLobbyPhase(lastFormSec); });
 $('btn-host-back').addEventListener('click', leaveOnline);
 $('btn-wait-back').addEventListener('click', leaveOnline);
 
 $('btn-create').addEventListener('click', () => {
   hideLobbyError();
+  roomPublic = lobbyEnabled() && $('create-public').checked;
   const name = $('create-name').value.trim().slice(0, 16) || 'Host';
   localStorage.setItem('kbr-name', name);
   createRoom(name);
 });
+
+/* ── Browse: offene Raumliste ── */
+function startBrowsing() {
+  $('browse-list').innerHTML = '<div class="lobby-hint">Suche nach Spielen…</div>';
+  browseStart(renderBrowseList);
+}
+function renderBrowseList(rooms) {
+  const el = $('browse-list');
+  el.innerHTML = '';
+  if (rooms === 'unavailable') { el.innerHTML = '<div class="lobby-hint">Offene Lobby ist nicht konfiguriert.</div>'; return; }
+  if (rooms === 'error') { el.innerHTML = '<div class="lobby-hint">Verbindung zur Lobby fehlgeschlagen.</div>'; return; }
+  if (!rooms.length) { el.innerHTML = '<div class="lobby-hint">Keine offenen Spiele – erstelle selbst einen Raum!</div>'; return; }
+  rooms.forEach(r => {
+    const row = document.createElement('button');
+    row.className = 'browse-row';
+    const nm = document.createElement('div');
+    nm.className = 'roster-name';
+    nm.textContent = `🎮 ${r.host || 'Spiel'}`;
+    const tag = document.createElement('div');
+    tag.className = 'roster-tag';
+    tag.textContent = `${r.players}/${r.max} Spieler`;
+    const join = document.createElement('div');
+    join.className = 'browse-join';
+    join.textContent = 'Beitreten →';
+    row.append(nm, tag, join);
+    row.addEventListener('click', () => joinFromBrowse(r.code));
+    el.appendChild(row);
+  });
+}
+function joinFromBrowse(code) {
+  const name = $('browse-name').value.trim().slice(0, 16) || 'Gast';
+  localStorage.setItem('kbr-name', name);
+  browseStop();
+  roomCode = code;
+  joinRoom(code, name);
+}
 
 $('join-code').addEventListener('input', e => {
   e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -1430,6 +1592,11 @@ if (typeof Peer === 'undefined') {
   const savedName = localStorage.getItem('kbr-name') || '';
   $('create-name').value = savedName;
   $('join-name').value = savedName;
+  $('browse-name').value = savedName;
+  if (lobbyEnabled()) {
+    $('btn-goto-browse').hidden = false;
+    $('public-toggle-row').hidden = false;
+  }
   const joinParam = new URLSearchParams(location.search).get('join');
   if (joinParam && /^[A-Za-z0-9]{3}$/.test(joinParam)) {
     activatePill('mode-pills', 'online');
